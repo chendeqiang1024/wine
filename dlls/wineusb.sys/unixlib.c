@@ -60,52 +60,67 @@ static pthread_mutex_t device_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static struct list device_list = LIST_INIT(device_list);
 
+/* 动态数组 */
 static bool array_reserve(void **elements, size_t *capacity, size_t count, size_t size)
 {
     unsigned int new_capacity, max_capacity;
     void *new_elements;
 
+    /* 如果够用就返回成功 */
     if (count <= *capacity)
         return true;
 
+    /* 如果超出size_t最大值则返回错误 */
     max_capacity = ~(size_t)0 / size;
     if (count > max_capacity)
         return false;
 
+    /* 容量至少为4字节 */
     new_capacity = max(4, *capacity);
+    /* 循环扩容，每次扩容为当前的2倍 */
     while (new_capacity < count && new_capacity <= max_capacity / 2)
         new_capacity *= 2;
+    /* 如果新容量大于max_capacity/2，则直接设置为max_capacity */
+    /* 这么离谱？内存全给他了？ */
     if (new_capacity < count)
         new_capacity = max_capacity;
 
+    /* 分配内存 */
     if (!(new_elements = realloc(*elements, new_capacity * size)))
         return false;
 
+    /* 出参内存地址和容量 */
     *elements = new_elements;
     *capacity = new_capacity;
 
     return true;
 }
 
+/* 添加事件到队列 */
 static void queue_event(const struct usb_event *event)
 {
+    /* 先动态扩容再存入事件，相当于动态数组 */
     if (array_reserve((void **)&usb_events, &usb_events_capacity, usb_event_count + 1, sizeof(*usb_events)))
         usb_events[usb_event_count++] = *event;
     else
         ERR("Failed to queue event.\n");
 }
 
+/* 获取事件 */
 static bool get_event(struct usb_event *event)
 {
     if (!usb_event_count) return false;
 
+    /* 获取当前事件 */
     *event = usb_events[0];
     if (--usb_event_count)
+        /* 移除当前事件 */
         memmove(usb_events, usb_events + 1, usb_event_count * sizeof(*usb_events));
 
     return true;
 }
 
+/* 添加usb设备 */
 static void add_usb_device(libusb_device *libusb_device)
 {
     struct libusb_config_descriptor *config_desc;
@@ -114,26 +129,32 @@ static void add_usb_device(libusb_device *libusb_device)
     struct usb_event usb_event;
     int ret;
 
+    /* 获取设备描述符 */
     libusb_get_device_descriptor(libusb_device, &device_desc);
 
     TRACE("Adding new device %p, vendor %04x, product %04x.\n", libusb_device,
             device_desc.idVendor, device_desc.idProduct);
 
+    /* 创建缓存设备 */
     if (!(unix_device = calloc(1, sizeof(*unix_device))))
         return;
 
+    /* 打开设备 */
     if ((ret = libusb_open(libusb_device, &unix_device->handle)))
     {
         WARN("Failed to open device: %s\n", libusb_strerror(ret));
         free(unix_device);
         return;
     }
+    /* 增加引用计数 */
     unix_device->refcount = 1;
 
+    /* 添加设备到链表 */
     pthread_mutex_lock(&device_mutex);
     list_add_tail(&device_list, &unix_device->entry);
     pthread_mutex_unlock(&device_mutex);
 
+    /* 填充设备信息 */
     usb_event.type = USB_EVENT_ADD_DEVICE;
     usb_event.u.added_device.device = unix_device;
     usb_event.u.added_device.vendor = device_desc.idVendor;
@@ -148,24 +169,29 @@ static void add_usb_device(libusb_device *libusb_device)
     usb_event.u.added_device.interface = false;
     usb_event.u.added_device.interface_index = -1;
 
+    /* 获取配置描述符 */
     if (!(ret = libusb_get_active_config_descriptor(libusb_device, &config_desc)))
     {
         const struct libusb_interface *interface;
         const struct libusb_interface_descriptor *iface_desc;
 
+        /* 如果是单接口 */
         if (config_desc->bNumInterfaces == 1)
         {
             interface = &config_desc->interface[0];
             if (interface->num_altsetting != 1)
                 FIXME("Interface 0 has %u alternate settings; using the first one.\n",
                         interface->num_altsetting);
+            /* 获取默认设置 */
             iface_desc = &interface->altsetting[0];
 
+            /* 填充接口信息 */
             usb_event.u.added_device.class = iface_desc->bInterfaceClass;
             usb_event.u.added_device.subclass = iface_desc->bInterfaceSubClass;
             usb_event.u.added_device.protocol = iface_desc->bInterfaceProtocol;
             usb_event.u.added_device.interface_index = iface_desc->bInterfaceNumber;
         }
+        /* 添加事件 */
         queue_event(&usb_event);
 
         /* Create new devices for interfaces of composite devices.
@@ -178,10 +204,12 @@ static void add_usb_device(libusb_device *libusb_device)
          * FIXME: usbccgp does not create separate interfaces in some cases,
          * e.g. when there is an interface association descriptor available.
          */
+        /* 如果是多接口设备 */
         if (config_desc->bNumInterfaces > 1)
         {
             uint8_t i;
 
+            /* 遍历接口 */
             for (i = 0; i < config_desc->bNumInterfaces; ++i)
             {
                 struct unix_device *unix_iface;
@@ -195,6 +223,7 @@ static void add_usb_device(libusb_device *libusb_device)
                 if (!(unix_iface = calloc(1, sizeof(*unix_iface))))
                     return;
 
+                /* 添加设备，由此可见，一个接口对应一个设备 */
                 ++unix_device->refcount;
                 unix_iface->refcount = 1;
                 unix_iface->handle = unix_device->handle;
@@ -203,15 +232,18 @@ static void add_usb_device(libusb_device *libusb_device)
                 list_add_tail(&device_list, &unix_iface->entry);
                 pthread_mutex_unlock(&device_mutex);
 
+                /* 填充接口信息 */
                 usb_event.u.added_device.device = unix_iface;
                 usb_event.u.added_device.class = iface_desc->bInterfaceClass;
                 usb_event.u.added_device.subclass = iface_desc->bInterfaceSubClass;
                 usb_event.u.added_device.protocol = iface_desc->bInterfaceProtocol;
                 usb_event.u.added_device.interface = true;
                 usb_event.u.added_device.interface_index = iface_desc->bInterfaceNumber;
+                /* 添加事件 */
                 queue_event(&usb_event);
             }
         }
+        /* 释放配置描述符 */
         libusb_free_config_descriptor(config_desc);
     }
     else
@@ -222,6 +254,7 @@ static void add_usb_device(libusb_device *libusb_device)
     }
 }
 
+/* 移除usb设备 */
 static void remove_usb_device(libusb_device *libusb_device)
 {
     struct unix_device *unix_device;
@@ -240,6 +273,7 @@ static void remove_usb_device(libusb_device *libusb_device)
     }
 }
 
+/* 热插拔回调函数 */
 static int LIBUSB_CALL hotplug_cb(libusb_context *context, libusb_device *device,
         libusb_hotplug_event event, void *user_data)
 {
@@ -251,6 +285,7 @@ static int LIBUSB_CALL hotplug_cb(libusb_context *context, libusb_device *device
     return 0;
 }
 
+/* usb主循环 */
 static NTSTATUS usb_main_loop(void *args)
 {
     const struct usb_main_loop_params *params = args;
@@ -258,12 +293,15 @@ static NTSTATUS usb_main_loop(void *args)
 
     while (!thread_shutdown)
     {
+        /* 获取一次事件，出参，获取成功则退出，获取不到则让libusb处理事件 */
         if (get_event(params->event)) return STATUS_PENDING;
 
+        /* libusb的主循环事件 */
         if ((ret = libusb_handle_events(NULL)))
             ERR("Error handling events: %s\n", libusb_strerror(ret));
     }
 
+    /* 线程停止则进行清理 */
     libusb_exit(NULL);
     free(usb_events);
     usb_events = NULL;
@@ -274,16 +312,19 @@ static NTSTATUS usb_main_loop(void *args)
     return STATUS_SUCCESS;
 }
 
+/* usb初始化 */
 static NTSTATUS usb_init(void *args)
 {
     int ret;
 
+    /* libusb初始化 */
     if ((ret = libusb_init(NULL)))
     {
         ERR("Failed to initialize libusb: %s\n", libusb_strerror(ret));
         return STATUS_UNSUCCESSFUL;
     }
 
+    /* 注册热插拔事件 */
     if ((ret = libusb_hotplug_register_callback(NULL,
             LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED | LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT,
             LIBUSB_HOTPLUG_ENUMERATE, LIBUSB_HOTPLUG_MATCH_ANY, LIBUSB_HOTPLUG_MATCH_ANY,
@@ -297,15 +338,20 @@ static NTSTATUS usb_init(void *args)
     return STATUS_SUCCESS;
 }
 
+/* usb退出 */
 static NTSTATUS usb_exit(void *args)
 {
+    /* 注销回调函数 */
     libusb_hotplug_deregister_callback(NULL, hotplug_cb_handle);
+    /* 停止线程 */
     thread_shutdown = true;
+    /* libusb停止事件处理 */
     libusb_interrupt_event_handler(NULL);
 
     return STATUS_SUCCESS;
 }
 
+/* usb状态转换 */
 static NTSTATUS usbd_status_from_libusb(enum libusb_transfer_status status)
 {
     switch (status)
@@ -333,6 +379,7 @@ struct transfer_ctx
     void *transfer_buffer;
 };
 
+/* 传输完成回调函数 */
 static void LIBUSB_CALL transfer_cb(struct libusb_transfer *transfer)
 {
     struct transfer_ctx *transfer_ctx = transfer->user_data;
@@ -344,16 +391,20 @@ static void LIBUSB_CALL transfer_cb(struct libusb_transfer *transfer)
     TRACE("Completing IRP %p, status %#x.\n", irp, transfer->status);
 
     free(transfer_ctx);
+    /* 获取传输状态 */
     urb->UrbHeader.Status = usbd_status_from_libusb(transfer->status);
 
+    /* 处理传输完成事件 */
     if (transfer->status == LIBUSB_TRANSFER_COMPLETED)
     {
         switch (urb->UrbHeader.Function)
         {
+            /* 块传输和中断传输 */
             case URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER:
                 urb->UrbBulkOrInterruptTransfer.TransferBufferLength = transfer->actual_length;
                 break;
 
+            /* 控制传输-获取设备描述符 */
             case URB_FUNCTION_GET_DESCRIPTOR_FROM_DEVICE:
             {
                 struct _URB_CONTROL_DESCRIPTOR_REQUEST *req = &urb->UrbControlDescriptorRequest;
@@ -380,6 +431,7 @@ static void LIBUSB_CALL transfer_cb(struct libusb_transfer *transfer)
 
     event.type = USB_EVENT_TRANSFER_COMPLETE;
     event.u.completed_irp = irp;
+    /* 添加事件 */
     queue_event(&event);
 }
 
@@ -389,8 +441,10 @@ struct pipe
     unsigned char type;
 };
 
+/* 制作管道 */
 static HANDLE make_pipe_handle(unsigned char endpoint, USBD_PIPE_TYPE type)
 {
+    /* 管道是一个整型，由类型和端点组成 */
     union
     {
         struct pipe pipe;
@@ -402,6 +456,7 @@ static HANDLE make_pipe_handle(unsigned char endpoint, USBD_PIPE_TYPE type)
     return u.handle;
 }
 
+/* 分解管道 */
 static struct pipe get_pipe(HANDLE handle)
 {
     union
@@ -414,6 +469,7 @@ static struct pipe get_pipe(HANDLE handle)
     return u.pipe;
 }
 
+/* 提交urb */
 static NTSTATUS usb_submit_urb(void *args)
 {
     const struct usb_submit_urb_params *params = args;
@@ -428,6 +484,7 @@ static NTSTATUS usb_submit_urb(void *args)
 
     switch (urb->UrbHeader.Function)
     {
+        /* 重置管道 */
         case URB_FUNCTION_SYNC_RESET_PIPE_AND_CLEAR_STALL:
         {
             struct _URB_PIPE_REQUEST *req = &urb->UrbPipeRequest;
@@ -439,6 +496,7 @@ static NTSTATUS usb_submit_urb(void *args)
             return STATUS_SUCCESS;
         }
 
+        /* 块传输和中断传输 */
         case URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER:
         {
             struct _URB_BULK_OR_INTERRUPT_TRANSFER *req = &urb->UrbBulkOrInterruptTransfer;
@@ -601,6 +659,7 @@ static NTSTATUS usb_submit_urb(void *args)
     return STATUS_NOT_IMPLEMENTED;
 }
 
+/* 取消传输 */
 static NTSTATUS usb_cancel_transfer(void *args)
 {
     const struct usb_cancel_transfer_params *params = args;
@@ -612,6 +671,7 @@ static NTSTATUS usb_cancel_transfer(void *args)
     return STATUS_SUCCESS;
 }
 
+/* 设备解引用 */
 static void decref_device(struct unix_device *device)
 {
     pthread_mutex_lock(&device_mutex);
@@ -626,6 +686,7 @@ static void decref_device(struct unix_device *device)
 
     pthread_mutex_unlock(&device_mutex);
 
+    /* 引用计数为0时才执行关闭动作 */
     if (device->parent)
         decref_device(device->parent);
     else
@@ -633,6 +694,7 @@ static void decref_device(struct unix_device *device)
     free(device);
 }
 
+/* 销毁设备 */
 static NTSTATUS usb_destroy_device(void *args)
 {
     const struct usb_destroy_device_params *params = args;
@@ -643,6 +705,7 @@ static NTSTATUS usb_destroy_device(void *args)
     return STATUS_SUCCESS;
 }
 
+/* 导出函数 */
 const unixlib_entry_t __wine_unix_call_funcs[] =
 {
 #define X(name) [unix_ ## name] = name
