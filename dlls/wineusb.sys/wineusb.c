@@ -87,7 +87,9 @@ struct usb_device
     LIST_ENTRY irp_list;
 };
 
+/* 驱动对象 */
 static DRIVER_OBJECT *driver_obj;
+/* 总线对象 */
 static DEVICE_OBJECT *bus_fdo, *bus_pdo;
 
 static void destroy_unix_device(struct unix_device *unix_device)
@@ -141,6 +143,7 @@ static void add_unix_device(const struct usb_add_device_event *event)
     device->revision = event->revision;
     device->usbver = event->usbver;
 
+    /* 添加到设备列表 */
     EnterCriticalSection(&wineusb_cs);
     list_add_tail(&device_list, &device->entry);
     LeaveCriticalSection(&wineusb_cs);
@@ -453,6 +456,7 @@ static void remove_pending_irps(struct usb_device *device)
     }
 }
 
+/* 设备事件 */
 static NTSTATUS pdo_pnp(DEVICE_OBJECT *device_obj, IRP *irp)
 {
     IO_STACK_LOCATION *stack = IoGetCurrentIrpStackLocation(irp);
@@ -516,6 +520,7 @@ static NTSTATUS pdo_pnp(DEVICE_OBJECT *device_obj, IRP *irp)
     return ret;
 }
 
+/* 设备事件回调函数 */
 static NTSTATUS WINAPI driver_pnp(DEVICE_OBJECT *device, IRP *irp)
 {
     if (device == bus_fdo)
@@ -674,14 +679,22 @@ static NTSTATUS WINAPI driver_add_device(DRIVER_OBJECT *driver, DEVICE_OBJECT *p
 
     TRACE("driver %p, pdo %p.\n", driver, pdo);
 
+    /* 
+     * 第一次事件可能是由wineboot创建根设备触发的，
+     * 之后的设备插入事件本应该也是从这里触发，
+     * 但是wineusb是在driver_pnp中触发的
+     */
     if ((ret = IoCreateDevice(driver, 0, NULL, FILE_DEVICE_BUS_EXTENDER, 0, FALSE, &bus_fdo)))
     {
         ERR("Failed to create FDO, status %#lx.\n", ret);
         return ret;
     }
 
+    /* 将wineusb总线设备添加到总线设备栈中 */
     IoAttachDeviceToDeviceStack(bus_fdo, pdo);
+    /* 设置栈顶指针 */
     bus_pdo = pdo;
+    /* 标记总线设备初始化完成 */
     bus_fdo->Flags &= ~DO_DEVICE_INITIALIZING;
 
     return STATUS_SUCCESS;
@@ -691,23 +704,30 @@ static void WINAPI driver_unload(DRIVER_OBJECT *driver)
 {
 }
 
+/* 当设备ClassGuid匹配wineusb.inf中ClassGuid时，pnp会调用驱动的入口函数 */
 NTSTATUS WINAPI DriverEntry(DRIVER_OBJECT *driver, UNICODE_STRING *path)
 {
     NTSTATUS status;
 
     TRACE("driver %p, path %s.\n", driver, debugstr_w(path->Buffer));
 
+    /* 只是查询是否有函数集地址 */
     if ((status = __wine_init_unix_call()))
     {
         ERR("Failed to initialize Unix library, status %#lx.\n", status);
         return status;
     }
 
+    /* 保存驱动对象，给add_unix_device用的 */
     driver_obj = driver;
 
+    /* 总线设备本身？ */
     driver->DriverExtension->AddDevice = driver_add_device;
+    /* 驱动卸载时的回调函数 */
     driver->DriverUnload = driver_unload;
+    /* 设备事件回调函数 */
     driver->MajorFunction[IRP_MJ_PNP] = driver_pnp;
+    /* 内部ioctl，相对应的还有个外部ioctrl */
     driver->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL] = driver_internal_ioctl;
 
     return STATUS_SUCCESS;
