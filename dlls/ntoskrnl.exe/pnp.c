@@ -342,6 +342,7 @@ static void start_device( DEVICE_OBJECT *device, HDEVINFO set, SP_DEVINFO_DATA *
         send_pnp_irp( device, IRP_MN_START_DEVICE );
 }
 
+/* 枚举新设备 */
 static void enumerate_new_device( DEVICE_OBJECT *device, HDEVINFO set )
 {
     static const WCHAR infpathW[] = {'I','n','f','P','a','t','h',0};
@@ -354,9 +355,11 @@ static void enumerate_new_device( DEVICE_OBJECT *device, HDEVINFO set )
     HKEY key;
     WCHAR *id;
 
+    /* 获取实例id */
     if (get_device_instance_id( device, device_instance_id ))
         return;
 
+    /* 创建设备信息 */
     if (!SetupDiCreateDeviceInfoW( set, device_instance_id, &GUID_NULL, NULL, NULL, 0, &sp_device )
             && !SetupDiOpenDeviceInfoW( set, device_instance_id, NULL, 0, &sp_device ))
     {
@@ -368,6 +371,7 @@ static void enumerate_new_device( DEVICE_OBJECT *device, HDEVINFO set )
 
     /* Check if the device already has a driver registered; if not, find one
      * and install it. */
+    /* 安装驱动 */
     key = SetupDiOpenDevRegKey( set, &sp_device, DICS_FLAG_GLOBAL, 0, DIREG_DRV, KEY_READ );
     if (key != INVALID_HANDLE_VALUE)
     {
@@ -376,12 +380,14 @@ static void enumerate_new_device( DEVICE_OBJECT *device, HDEVINFO set )
         RegCloseKey( key );
     }
 
+    /* 获取设备能力 */
     if ((status = get_device_caps( device, &caps )))
     {
         ERR("Failed to get caps for device %s, status %#lx.\n", debugstr_w(device_instance_id), status);
         return;
     }
 
+    /* 获取容器ID */
     if (!get_device_id(device, BusQueryContainerID, &id) && id)
     {
         SetupDiSetDeviceRegistryPropertyW( set, &sp_device, SPDRP_BASE_CONTAINERID, (BYTE *)id,
@@ -389,6 +395,7 @@ static void enumerate_new_device( DEVICE_OBJECT *device, HDEVINFO set )
         ExFreePool( id );
     }
 
+    /* 获取设备文本描述 */
     if (!get_device_text(device, DeviceTextDescription, &id) && id)
     {
         if (!SetupDiSetDevicePropertyW( set, &sp_device, &DEVPKEY_Device_BusReportedDeviceDesc, DEVPROP_TYPE_STRING,
@@ -403,6 +410,7 @@ static void enumerate_new_device( DEVICE_OBJECT *device, HDEVINFO set )
         return;
     }
 
+    /* 启动设备 */
     start_device( device, set, &sp_device );
 }
 
@@ -439,8 +447,10 @@ static BOOL device_in_list( const DEVICE_RELATIONS *list, const DEVICE_OBJECT *d
     return FALSE;
 }
 
+/* 总线是先比PNP启动吗？所以这里才能查询总线关系 */
 static void handle_bus_relations( DEVICE_OBJECT *parent )
 {
+    /* 获取无效设备的wine_device对象 */
     struct wine_device *wine_parent = CONTAINING_RECORD(parent, struct wine_device, device_obj);
     SP_DEVINFO_DATA sp_device = {sizeof(sp_device)};
     DEVICE_RELATIONS *relations;
@@ -453,22 +463,27 @@ static void handle_bus_relations( DEVICE_OBJECT *parent )
 
     TRACE( "(%p)\n", parent );
 
+    /* 获取所有设备信息 */
     set = SetupDiCreateDeviceInfoList( NULL, NULL );
 
+    /* 获取栈顶设备 */
     parent = IoGetAttachedDevice( parent );
 
     KeInitializeEvent( &event, NotificationEvent, FALSE );
+    /* 为栈顶设备构建PNP请求 */
     if (!(irp = IoBuildSynchronousFsdRequest( IRP_MJ_PNP, parent, NULL, 0, NULL, &event, &irp_status )))
     {
         SetupDiDestroyDeviceInfoList( set );
         return;
     }
 
+    /* 填充irp信息 */
     irpsp = IoGetNextIrpStackLocation( irp );
-    irpsp->MinorFunction = IRP_MN_QUERY_DEVICE_RELATIONS;
+    irpsp->MinorFunction = IRP_MN_QUERY_DEVICE_RELATIONS; /* 查询设备关系 */
     irpsp->Parameters.QueryDeviceRelations.Type = BusRelations;
 
     irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
+    /* 调用栈顶设备驱动 */
     if (IoCallDriver( parent, irp ) == STATUS_PENDING)
         KeWaitForSingleObject( &event, Executive, KernelMode, FALSE, NULL );
 
@@ -482,17 +497,21 @@ static void handle_bus_relations( DEVICE_OBJECT *parent )
 
     TRACE("Got %lu devices.\n", relations->Count);
 
+    /* 设备栈上需要更新的设备? */
     for (i = 0; i < relations->Count; ++i)
     {
         DEVICE_OBJECT *child = relations->Objects[i];
 
+        /* 如果是新设备则添加设备 */
         if (!wine_parent->children || !device_in_list( wine_parent->children, child ))
         {
             TRACE("Adding new device %p.\n", child);
+            /* 枚举新设备 */
             enumerate_new_device( child, set );
         }
     }
 
+    /* 移除空设备 */
     if (wine_parent->children)
     {
         for (i = 0; i < wine_parent->children->Count; ++i)
@@ -1400,6 +1419,10 @@ static DWORD CALLBACK device_enum_thread_proc(void *arg)
         while (!invalidated_devices_count)
             SleepConditionVariableCS( &invalidated_devices_cv, &invalidated_devices_cs, INFINITE );
 
+        /* 
+         * 根据无效设备来刷新总线
+         * 调用IoInvalidateDeviceRelations()会增加无效设备
+         */
         device = invalidated_devices[--invalidated_devices_count];
 
         /* Don't hold the CS while enumerating the device. Tests show that
@@ -1407,6 +1430,7 @@ static DWORD CALLBACK device_enum_thread_proc(void *arg)
          * block, even if this thread is blocked in an IRP handler. */
         LeaveCriticalSection( &invalidated_devices_cs );
 
+        /* 刷新总线 */
         handle_bus_relations( device );
     }
 
@@ -1435,6 +1459,7 @@ void pnp_manager_start(void)
     if (err)
         ERR("RpcBindingFromStringBinding() failed, error %#lx\n", err);
 
+    /* 枚举设备 */
     CreateThread( NULL, 0, device_enum_thread_proc, NULL, 0, NULL );
 }
 

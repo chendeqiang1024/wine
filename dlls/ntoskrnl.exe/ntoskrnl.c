@@ -935,6 +935,7 @@ NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event )
     PsInitialSystemProcess = IoGetCurrentProcess();
     request_thread = GetCurrentThreadId();
 
+    /* PNP启动 */
     pnp_manager_start();
 
     handles[0] = stop_event;

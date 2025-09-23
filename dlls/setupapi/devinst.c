@@ -4203,12 +4203,17 @@ BOOL WINAPI SetupDiCallClassInstaller(DI_FUNCTION function, HDEVINFO devinfo, SP
     if (!(device = get_device(devinfo, device_data)))
         return FALSE;
 
+    /* 
+     * 1. 查找"HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\CoDeviceInstallers"
+     * 应该是判断是否是COM应用
+     */
     if (!RegOpenKeyExW(HKEY_LOCAL_MACHINE, class_coinst_pathW, 0, KEY_READ, &coinst_key))
     {
         SETUPDI_GuidToString(&device->class, guidstr);
         if (!RegGetValueW(coinst_key, NULL, guidstr, RRF_RT_REG_MULTI_SZ, NULL, NULL, &size))
         {
             path = malloc(size);
+            // 调用COM安装器？
             if (!RegGetValueW(coinst_key, NULL, guidstr, RRF_RT_REG_MULTI_SZ, NULL, path, &size))
                 coret = call_coinstallers(path, function, devinfo, device_data);
             free(path);
@@ -4231,6 +4236,7 @@ BOOL WINAPI SetupDiCallClassInstaller(DI_FUNCTION function, HDEVINFO devinfo, SP
         RegCloseKey(coinst_key);
     }
 
+    /* 2. 查找类驱动 */
     if ((class_key = SetupDiOpenClassRegKey(&device->class, KEY_READ)) != INVALID_HANDLE_VALUE)
     {
         if (!RegGetValueW(class_key, NULL, L"Installer32", RRF_RT_REG_SZ, NULL, NULL, &size))
@@ -4266,6 +4272,7 @@ BOOL WINAPI SetupDiCallClassInstaller(DI_FUNCTION function, HDEVINFO devinfo, SP
         RegCloseKey(class_key);
     }
 
+    /* 3. 默认行为 */
     if (ret == ERROR_DI_DO_DEFAULT)
     {
         switch (function)

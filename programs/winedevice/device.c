@@ -140,6 +140,7 @@ static void WINAPI ServiceMain( DWORD argc, LPWSTR *argv )
     set_service_status( service_handle, SERVICE_RUNNING,
                         SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN );
 
+    /* 这里启动PNP */
     wine_ntoskrnl_main_loop( stop_event );
 
     TRACE( "service group %s stopped\n", wine_dbgstr_w(service_group) );
@@ -148,15 +149,18 @@ static void WINAPI ServiceMain( DWORD argc, LPWSTR *argv )
     CloseHandle( stop_event );
 }
 
+/* 在wine.inf中被启动 */
 int __cdecl wmain( int argc, WCHAR *argv[] )
 {
     SERVICE_TABLE_ENTRYW service_table[2];
 
+    /* 服务名称和主函数 */
     service_table[0].lpServiceName = winedeviceW;
     service_table[0].lpServiceProc = ServiceMain;
     service_table[1].lpServiceName = NULL;
     service_table[1].lpServiceProc = NULL;
 
+    /* 服务化 */
     StartServiceCtrlDispatcherW( service_table );
     return 0;
 }

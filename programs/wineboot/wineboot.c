@@ -1071,6 +1071,7 @@ static BOOL wininit(void)
         if (!(buffer = malloc( size * sizeof(WCHAR) ))) return FALSE;
     }
 
+    /* 读取配置文件 */
     for (str = buffer; *str; str += lstrlenW(str) + 1)
     {
         WCHAR *value;
@@ -1573,12 +1574,14 @@ static void install_root_pnp_devices(void)
             continue;
         }
 
+        /* 安装类驱动？ */
         if (!SetupDiCallClassInstaller(DIF_REGISTERDEVICE, set, &device))
         {
             WINE_ERR("Failed to register device %s, error %#lx.\n", debugstr_a(root_devices[i].name), GetLastError());
             continue;
         }
 
+        /* 和上一个CallClassInstaller不同的是，这个函数遍历了所有类型 */
         if (!UpdateDriverForPlugAndPlayDevicesA(NULL, root_devices[i].hardware_id, root_devices[i].infpath, 0, NULL))
             WINE_ERR("Failed to install drivers for %s, error %#lx.\n", debugstr_a(root_devices[i].name), GetLastError());
     }
@@ -1877,10 +1880,12 @@ int __cdecl main( int argc, char *argv[] )
     create_hardware_registry_keys();
     create_dynamic_registry_keys();
     create_computer_name_keys();
+    /* 执行wineinit.ini */
     wininit();
     pendingRename();
 
     ProcessWindowsFileProtection();
+    /* 运行开启自启动服务 */
     ProcessRunKeys( HKEY_LOCAL_MACHINE, L"RunServicesOnce", TRUE, FALSE );
 
     if (init || (kill && !restart))

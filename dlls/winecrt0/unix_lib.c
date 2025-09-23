@@ -89,6 +89,7 @@ NTSTATUS __attribute__((naked)) __wine_unix_call_arm64ec( unixlib_handle_t handl
 
 #endif
 
+/* 只查询了是否存在？ */
 NTSTATUS WINAPI __wine_init_unix_call(void)
 {
     return NtQueryVirtualMemory( GetCurrentProcess(), image_base(), MemoryWineUnixFuncs,
