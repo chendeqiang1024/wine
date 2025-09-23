@@ -925,6 +925,7 @@ PEPROCESS PsInitialSystemProcess = NULL;
  */
 NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event )
 {
+    /* 获取设备管理器 */
     HANDLE manager = get_device_manager();
     struct dispatch_context context = {.in_size = 4096};
     NTSTATUS status = STATUS_SUCCESS;
