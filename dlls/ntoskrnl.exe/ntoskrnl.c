@@ -925,7 +925,7 @@ PEPROCESS PsInitialSystemProcess = NULL;
  */
 NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event )
 {
-    /* 获取设备管理器 */
+    /* 获取设备管理器? */
     HANDLE manager = get_device_manager();
     struct dispatch_context context = {.in_size = 4096};
     NTSTATUS status = STATUS_SUCCESS;
@@ -989,6 +989,7 @@ NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event )
             }
 
             wine_server_set_reply( req, context.in_buff, context.in_size );
+            /* 调用请求 */
             if (!(status = wine_server_call( req )))
             {
                 context.handle  = wine_server_ptr_handle( reply->next );
@@ -1006,12 +1007,14 @@ NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event )
         }
         SERVER_END_REQ;
 
+        /* 如果有设备请求 */
         if (context.irp_data)
         {
             if (context.irp_data->complete)
             {
                 IRP *irp = context.irp_data->irp;
                 free_dispatch_irp( context.irp_data );
+                /* 完成请求 */
                 IoCompleteRequest( irp, IO_NO_INCREMENT );
             }
             else
