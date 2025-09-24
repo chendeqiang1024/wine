@@ -2141,6 +2141,7 @@ static const IDirectInputDevice8WVtbl dinput_device_w_vtbl =
     dinput_device_GetImageInfo,
 };
 
+/* 关联接口和实现 */
 void dinput_device_init( struct dinput_device *device, const struct dinput_device_vtbl *vtbl,
                          const GUID *guid, struct dinput *dinput )
 {

@@ -337,12 +337,14 @@ static BOOL install_device_driver( DEVICE_OBJECT *device, HDEVINFO set, SP_DEVIN
  * send IRPs to start the device. */
 static void start_device( DEVICE_OBJECT *device, HDEVINFO set, SP_DEVINFO_DATA *sp_device )
 {
+    /* 加载驱动，这会调用驱动的AddDevice例程 */
     load_function_driver( device, set, sp_device );
+    /* 发送IRP_MN_START_DEVICE事件 */
     if (device->DriverObject)
         send_pnp_irp( device, IRP_MN_START_DEVICE );
 }
 
-/* 枚举新设备 */
+/* 枚举新设备，会调用驱动的AddDevice方法 */
 static void enumerate_new_device( DEVICE_OBJECT *device, HDEVINFO set )
 {
     static const WCHAR infpathW[] = {'I','n','f','P','a','t','h',0};
@@ -1408,6 +1410,7 @@ static NTSTATUS WINAPI pnp_manager_driver_entry( DRIVER_OBJECT *driver, UNICODE_
     return STATUS_SUCCESS;
 }
 
+/* 刷新总线 */
 static DWORD CALLBACK device_enum_thread_proc(void *arg)
 {
     for (;;)
@@ -1446,7 +1449,7 @@ void pnp_manager_start(void)
     NTSTATUS status;
     RPC_STATUS err;
 
-    /* 创建啥驱动？ */
+    /* 创建PNP管理器驱动，L"\\Driver\\PnpManager" */
     if ((status = IoCreateDriver( &driver_nameU, pnp_manager_driver_entry )))
         ERR("Failed to create PnP manager driver, status %#lx.\n", status);
 
@@ -1478,6 +1481,7 @@ void pnp_manager_stop(void)
     RpcBindingFree( &plugplay_binding_handle );
 }
 
+/* 此处也会启动设备 */
 void CDECL wine_enumerate_root_devices( const WCHAR *driver_name )
 {
     static const WCHAR driverW[] = {'\\','D','r','i','v','e','r','\\',0};

@@ -62,6 +62,7 @@ struct input_thread_state
     HANDLE *events;
 };
 
+/* 接口转实现，就是成员转对象 */
 static inline struct dinput_device *impl_from_IDirectInputDevice8W( IDirectInputDevice8W *iface )
 {
     return CONTAINING_RECORD( iface, struct dinput_device, IDirectInputDevice8W_iface );

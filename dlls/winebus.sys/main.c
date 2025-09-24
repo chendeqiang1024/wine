@@ -417,9 +417,11 @@ static DEVICE_OBJECT *bus_create_hid_device(struct device_desc *desc, UINT64 uni
      * device in order to get things like DEVPKEY_Device_BusReportedDeviceDesc.
      * Create a unique container ID to facilitate this.
      */
+    /* 创建容器id */
     make_unique_container_id(ext);
 
     /* add to list of pnp devices */
+    /* 为啥添加这个链表就能刷新总线了？，得看一下总线刷新原理 */
     if (before)
         list_add_before(before, &ext->entry);
     else
@@ -1691,6 +1693,7 @@ static NTSTATUS WINAPI driver_add_device(DRIVER_OBJECT *driver, DEVICE_OBJECT *p
 
     /* 添加到驱动栈 */
     IoAttachDeviceToDeviceStack(bus_fdo, pdo);
+    /* 注意这不是bus_fdo */
     bus_pdo = pdo;
 
     /* 总线完成初始化 */

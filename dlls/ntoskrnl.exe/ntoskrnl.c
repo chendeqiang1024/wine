@@ -923,7 +923,6 @@ PEPROCESS PsInitialSystemProcess = NULL;
 
 /***********************************************************************
  *           wine_ntoskrnl_main_loop   (Not a Windows API)
- *           似乎是处理设备请求用的，和wine server通信
  */
 NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event )
 {
