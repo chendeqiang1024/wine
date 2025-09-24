@@ -1446,6 +1446,7 @@ void pnp_manager_start(void)
     NTSTATUS status;
     RPC_STATUS err;
 
+    /* 创建啥驱动？ */
     if ((status = IoCreateDriver( &driver_nameU, pnp_manager_driver_entry )))
         ERR("Failed to create PnP manager driver, status %#lx.\n", status);
 

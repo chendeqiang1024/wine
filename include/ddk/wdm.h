@@ -449,9 +449,15 @@ typedef struct _DEVICE_OBJECT {
   CSHORT  Type;
   USHORT  Size;
   LONG  ReferenceCount;
-  struct _DRIVER_OBJECT  *DriverObject;
-  struct _DEVICE_OBJECT  *NextDevice;
-  struct _DEVICE_OBJECT  *AttachedDevice;
+  /* 
+   * 和Linux不同，Linux中一个设备只能对应一个驱动，
+   * 而Windows中一个设备可以对应多个驱动，
+   * 所以NextDevice表示设备链表，AttachedDevice表示驱动链表
+   * 但是驱动栈是用驱动创建的设备表示的，所以DriverObject才是驱动实例
+   */
+  struct _DRIVER_OBJECT  *DriverObject; /* 驱动对象 */
+  struct _DEVICE_OBJECT  *NextDevice; /* 设备栈 */
+  struct _DEVICE_OBJECT  *AttachedDevice; /* 驱动栈 */
   struct _IRP  *CurrentIrp;
   PIO_TIMER  Timer;
   ULONG  Flags;

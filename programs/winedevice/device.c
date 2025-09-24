@@ -140,7 +140,7 @@ static void WINAPI ServiceMain( DWORD argc, LPWSTR *argv )
     set_service_status( service_handle, SERVICE_RUNNING,
                         SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN );
 
-    /* 这里启动PNP */
+    /* 主循环，启动PNP并循环处理设备irp */
     wine_ntoskrnl_main_loop( stop_event );
 
     TRACE( "service group %s stopped\n", wine_dbgstr_w(service_group) );

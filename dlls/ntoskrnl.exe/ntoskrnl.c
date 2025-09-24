@@ -119,6 +119,7 @@ static HANDLE get_device_manager(void)
 
     if (!ret)
     {
+        /* 设备管理器，包含设备链表和请求 */
         SERVER_START_REQ( create_device_manager )
         {
             req->access     = SYNCHRONIZE;
@@ -922,6 +923,7 @@ PEPROCESS PsInitialSystemProcess = NULL;
 
 /***********************************************************************
  *           wine_ntoskrnl_main_loop   (Not a Windows API)
+ *           似乎是处理设备请求用的，和wine server通信
  */
 NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event )
 {
@@ -1007,7 +1009,7 @@ NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event )
         }
         SERVER_END_REQ;
 
-        /* 如果有设备请求 */
+        /* 接收回应 */
         if (context.irp_data)
         {
             if (context.irp_data->complete)
@@ -1031,6 +1033,7 @@ NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event )
         {
         case STATUS_SUCCESS:
             assert( context.params.type != IRP_CALL_NONE && context.params.type < ARRAY_SIZE(dispatch_funcs) );
+            /* 调用请求函数 */
             status = dispatch_funcs[context.params.type]( &context );
             if (!context.in_buff) context.in_size = 4096;
             break;
@@ -1342,8 +1345,11 @@ PDEVICE_OBJECT WINAPI IoAttachDeviceToDeviceStack( DEVICE_OBJECT *source,
                                                    DEVICE_OBJECT *target )
 {
     TRACE( "%p, %p\n", source, target );
+    /* 设备链表转换到设备栈 */
     target = IoGetAttachedDevice( target );
+    /* 设置栈顶指针 */
     target->AttachedDevice = source;
+    /* 增加栈大小 */
     source->StackSize = target->StackSize + 1;
     return target;
 }

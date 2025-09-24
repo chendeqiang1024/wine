@@ -926,6 +926,7 @@ struct bus_main_params
     struct bus_event *bus_event;
 };
 
+/* 总线主函数 */
 static DWORD CALLBACK bus_main_thread(void *args)
 {
     struct bus_main_params bus = *(struct bus_main_params *)args;
@@ -1021,6 +1022,7 @@ static NTSTATUS bus_main_thread_start(struct bus_main_params *bus)
     }
 
     bus->init_status = &status;
+    /* 总线主线程 */
     if (!(bus_thread[i] = CreateThread(NULL, 0, bus_main_thread, bus, 0, NULL)))
     {
         ERR("failed to create %s bus thread.\n", debugstr_w(bus->name));
@@ -1234,6 +1236,7 @@ static void bus_options_cleanup(void)
     list_init(&options.devices);
 }
 
+/* Simple DirectMedia Layer 2 */
 static NTSTATUS sdl_driver_init(void)
 {
     struct bus_main_params bus =
@@ -1285,9 +1288,11 @@ static NTSTATUS fdo_pnp_dispatch(DEVICE_OBJECT *device, IRP *irp)
     case IRP_MN_START_DEVICE:
         bus_options_init();
 
+        /* 这里表明是在总线设备启动时创建设备，而不是通过driver_add_device() */
         mouse_device_create();
         keyboard_device_create();
 
+        /* 总线线程 */
         if (!sdl_driver_init()) options.disable_input = TRUE;
         udev_driver_init();
         iohid_driver_init();
@@ -1667,21 +1672,28 @@ static NTSTATUS WINAPI hid_internal_dispatch(DEVICE_OBJECT *device, IRP *irp)
     return status;
 }
 
+/* 
+ * MSDN显示这个函数会在初始化和枚举新设备时被调用，
+ * 但是此处设计只调用了1次，就是创建总线
+ */
 static NTSTATUS WINAPI driver_add_device(DRIVER_OBJECT *driver, DEVICE_OBJECT *pdo)
 {
     NTSTATUS ret;
 
     TRACE("driver %p, pdo %p.\n", driver, pdo);
 
+    /* 创建总线设备 */
     if ((ret = IoCreateDevice(driver, 0, NULL, FILE_DEVICE_BUS_EXTENDER, 0, FALSE, &bus_fdo)))
     {
         ERR("Failed to create FDO, status %#lx.\n", ret);
         return ret;
     }
 
+    /* 添加到驱动栈 */
     IoAttachDeviceToDeviceStack(bus_fdo, pdo);
     bus_pdo = pdo;
 
+    /* 总线完成初始化 */
     bus_fdo->Flags &= ~DO_DEVICE_INITIALIZING;
 
     return STATUS_SUCCESS;
