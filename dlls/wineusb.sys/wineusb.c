@@ -725,7 +725,7 @@ NTSTATUS WINAPI DriverEntry(DRIVER_OBJECT *driver, UNICODE_STRING *path)
     driver->DriverExtension->AddDevice = driver_add_device;
     /* 驱动卸载时的回调函数 */
     driver->DriverUnload = driver_unload;
-    /* 设备事件回调函数 */
+    /* 用户态PNP事件处理 */
     driver->MajorFunction[IRP_MJ_PNP] = driver_pnp;
     /* 内部ioctl，相对应的还有个外部ioctrl */
     driver->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL] = driver_internal_ioctl;

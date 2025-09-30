@@ -527,10 +527,12 @@ static NTSTATUS dispatch_irp( DEVICE_OBJECT *device, IRP *irp, struct dispatch_c
     irp_data->async = FALSE;
     irp_data->complete = FALSE;
 
+    /* 设置请求完成的回调函数 */
     IoSetCompletionRoutine( irp, dispatch_irp_completion, irp_data, TRUE, TRUE, TRUE );
     context->irp_data = irp_data;
     context->handle = 0;
 
+    /* 获取系统启动以来的时钟节拍数 */
     KeQueryTickCount( &count );  /* update the global KeTickCount */
 
     device->CurrentIrp = irp;
@@ -1855,10 +1857,12 @@ NTSTATUS WINAPI IoCallDriver( DEVICE_OBJECT *device, IRP *irp )
     --irp->CurrentLocation;
     irpsp = --irp->Tail.Overlay.CurrentStackLocation;
     irpsp->DeviceObject = device;
+    /* 获取驱动的派发函数 */
     dispatch = device->DriverObject->MajorFunction[irpsp->MajorFunction];
 
     TRACE_(relay)( "\1Call driver dispatch %p (device=%p,irp=%p)\n", dispatch, device, irp );
 
+    /* 调用派发函数 */
     status = dispatch( device, irp );
 
     TRACE_(relay)( "\1Ret  driver dispatch %p (device=%p,irp=%p) retval=%08lx\n",
