@@ -718,17 +718,21 @@ NTSTATUS WINAPI DriverEntry(DRIVER_OBJECT *driver, UNICODE_STRING *path)
         return status;
     }
 
-    /* 保存驱动对象，给add_unix_device用的 */
+    /* 全局对象，驱动存在期间，只有一个driver对象，设备挂载到设备链表中 */
     driver_obj = driver;
 
-    /* 总线设备本身？ */
+    /* 设备匹配到驱动时调用 */
     driver->DriverExtension->AddDevice = driver_add_device;
     /* 驱动卸载时的回调函数 */
     driver->DriverUnload = driver_unload;
     /* 用户态PNP事件处理 */
     driver->MajorFunction[IRP_MJ_PNP] = driver_pnp;
-    /* 内部ioctl，相对应的还有个外部ioctrl */
+    /* 内部ioctl，内核态触发 */
     driver->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL] = driver_internal_ioctl;
+    /* 外部ioctl，用户态触发 */
+    //driver->MajorFunction[IRP_MJ_DEVICE_CONTROL] = driver_ioctl;
+    /* 用户态Create触发 */
+    //driver->MajorFunction[IRP_MJ_Create] = driver_open;
 
     return STATUS_SUCCESS;
 }
