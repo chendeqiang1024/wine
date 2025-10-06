@@ -830,6 +830,9 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateFileW( LPCWSTR filename, DWORD access, DWO
            (sharing & FILE_SHARE_DELETE) ? "FILE_SHARE_DELETE " : "",
            creation, attributes);
 
+    /* 如果是NT，且是\\.\开头，且不是Dos设备，且不是PIPE或MAILSLOT，
+     * 跳过前4个字符，获取文件名
+     */
     if ((GetVersion() & 0x80000000) && !wcsncmp( filename, L"\\\\.\\", 4 ) &&
         !RtlIsDosDeviceName_U( filename + 4 ) &&
         wcsnicmp( filename + 4, L"PIPE\\", 5 ) &&
@@ -845,6 +848,7 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateFileW( LPCWSTR filename, DWORD access, DWO
         return INVALID_HANDLE_VALUE;
     }
 
+    /* Dos路径转NT路径 */
     if (!RtlDosPathNameToNtPathName_U( filename, &nameW, NULL, NULL ))
     {
         SetLastError( ERROR_PATH_NOT_FOUND );

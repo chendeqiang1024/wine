@@ -81,14 +81,17 @@ ULONG WINAPI RtlIsDosDeviceName_U( PCWSTR dos_name )
     case RtlPathTypeUnknown:
     case RtlPathTypeUncAbsolute:
         return 0;
+    /* 控制台设备 */
     case RtlPathTypeLocalDevice:
         if (!wcsicmp( dos_name, L"\\\\.\\CON" ))
             return MAKELONG( sizeof(conW), 4 * sizeof(WCHAR) );  /* 4 is length of \\.\ prefix */
         return 0;
+    /* 文件系统 */
     case RtlPathTypeDriveAbsolute:
     case RtlPathTypeDriveRelative:
         start = dos_name + 2;  /* skip drive letter */
         break;
+    /* 其他 */
     default:
         start = dos_name;
         break;
@@ -113,7 +116,7 @@ ULONG WINAPI RtlIsDosDeviceName_U( PCWSTR dos_name )
             wcsnicmp( start, nulW, 3 ) &&
             wcsnicmp( start, prnW, 3 )) break;
         return MAKELONG( 3 * sizeof(WCHAR), (start - dos_name) * sizeof(WCHAR) );
-    case 4:
+    case 4: /* eg: con1 */
         if (wcsnicmp( start, comW, 3 ) && wcsnicmp( start, lptW, 3 )) break;
         if (*end <= '0' || *end > '9') break;
         return MAKELONG( 4 * sizeof(WCHAR), (start - dos_name) * sizeof(WCHAR) );
