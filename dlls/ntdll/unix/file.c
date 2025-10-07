@@ -2211,8 +2211,10 @@ static unsigned int server_open_file_object( HANDLE *handle, ACCESS_MASK access,
 {
     unsigned int status;
 
+    /* 调用open_file_object */
     SERVER_START_REQ( open_file_object )
     {
+        /* 传参 */
         req->access     = access;
         req->attributes = attr->Attributes;
         req->rootdir    = wine_server_obj_handle( attr->RootDirectory );
@@ -4007,12 +4009,14 @@ NTSTATUS get_nt_and_unix_names( OBJECT_ATTRIBUTES *attr, UNICODE_STRING *nt_name
         status = nt_to_unix_file_name( attr, unix_name_ret, disposition );
     }
 
+    /* find_drive_nt_root返回值 */
     if (!status || status == STATUS_NO_SUCH_FILE)
     {
         remove_trailing_backslash( attr, nt_name );
         TRACE( "%s -> ret %x nt %s unix %s\n", debugstr_us(orig),
                status, debugstr_us(attr->ObjectName), debugstr_a(*unix_name_ret) );
     }
+    /* nt_to_unix_file_name返回值 */
     else TRACE( "%s -> ret %x\n", debugstr_us(orig), status );
     return status;
 }
@@ -4264,6 +4268,7 @@ NTSTATUS WINAPI NtCreateFile( HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIBU
     if (alloc_size) FIXME( "alloc_size not supported\n" );
 
     new_attr = *attr;
+    /* 查找Linux上的文件或设备 */
     if (options & FILE_OPEN_BY_FILE_ID)
     {
         status = file_id_to_unix_file_name( &new_attr, &unix_name, &nt_name );
@@ -4271,6 +4276,7 @@ NTSTATUS WINAPI NtCreateFile( HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIBU
     }
     else status = get_nt_and_unix_names( &new_attr, &nt_name, &unix_name, disposition );
 
+    /* 找到的是设备，但Linux上不存在 */
     if (status == STATUS_BAD_DEVICE_TYPE)
     {
         status = server_open_file_object( handle, access, &new_attr, sharing, options );
@@ -4278,12 +4284,14 @@ NTSTATUS WINAPI NtCreateFile( HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIBU
         goto done;
     }
 
+    /* 找到的是文件，但Linux上不存在 */
     if (status == STATUS_NO_SUCH_FILE && disposition != FILE_OPEN && disposition != FILE_OVERWRITE)
     {
         created = TRUE;
         status = STATUS_SUCCESS;
     }
 
+    /* 判断是否是隐藏文件 */
     if (status == STATUS_SUCCESS)
     {
         name_hidden = is_hidden_file( unix_name );
@@ -4292,6 +4300,7 @@ NTSTATUS WINAPI NtCreateFile( HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIBU
     }
     else WARN( "%s not found (%x)\n", debugstr_us(attr->ObjectName), status );
 
+    /* 判断是否需要创建文件 */
     if (status == STATUS_SUCCESS)
     {
         if (created) io->Information = FILE_CREATED;

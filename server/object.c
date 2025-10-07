@@ -794,6 +794,8 @@ struct object *no_lookup_name( struct object *obj, struct unicode_str *name,
                                unsigned int attr, struct object *root )
 {
     if (!name) set_error( STATUS_OBJECT_TYPE_MISMATCH );
+    /* 这里需要fprintf才能打印 */
+    fprintf(stderr, "no_lookup_name\n");
     return NULL;
 }
 
