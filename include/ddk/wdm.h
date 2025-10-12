@@ -445,6 +445,7 @@ typedef struct _WAIT_CONTEXT_BLOCK {
 #define IO_TYPE_DEVICE_OBJECT_EXTENSION 0x0d
 #define IO_TYPE_DEVICE_QUEUE            0x14
 
+/* 设备对象 */
 typedef struct _DEVICE_OBJECT {
   CSHORT  Type;
   USHORT  Size;
@@ -454,10 +455,16 @@ typedef struct _DEVICE_OBJECT {
    * 而Windows中一个设备可以对应多个驱动，
    * 所以NextDevice表示设备链表，AttachedDevice表示驱动链表
    * 但是驱动栈是用驱动创建的设备表示的，所以DriverObject才是驱动实例
+   *
+   * NextDevice和AttachedDevice都是单链表。
+   *
+   * 当FDO附加到PDO上时，PDO会通过AttachedDevice知道它上面的设备是FDO，
+   * 而FDO知道他下层设备的方法是在设备扩展中使用NextStackDevice来记录。
+   * AttachedDevice是在IoAttachDeviceToDeviceStack时添加的。
    */
   struct _DRIVER_OBJECT  *DriverObject; /* 驱动对象 */
-  struct _DEVICE_OBJECT  *NextDevice; /* 设备栈 */
-  struct _DEVICE_OBJECT  *AttachedDevice; /* 驱动栈 */
+  struct _DEVICE_OBJECT  *NextDevice; /* 设备栈，横向设备，指向下一个设备 */
+  struct _DEVICE_OBJECT  *AttachedDevice; /* 驱动栈，纵向设备，指向上层设备 */
   struct _IRP  *CurrentIrp;
   PIO_TIMER  Timer;
   ULONG  Flags;
@@ -465,7 +472,7 @@ typedef struct _DEVICE_OBJECT {
   PVPB  Vpb;
   PVOID  DeviceExtension;
   DEVICE_TYPE  DeviceType;
-  CCHAR  StackSize;
+  CCHAR  StackSize; /* 当前IRP层次 */
   union {
     LIST_ENTRY  ListEntry;
     WAIT_CONTEXT_BLOCK  Wcb;
@@ -496,20 +503,21 @@ typedef struct _DRIVER_EXTENSION {
   UNICODE_STRING  ServiceKeyName;
 } DRIVER_EXTENSION, *PDRIVER_EXTENSION;
 
+/* 驱动对象 */
 typedef struct _DRIVER_OBJECT {
   CSHORT  Type;
   CSHORT  Size;
-  PDEVICE_OBJECT  DeviceObject;
+  PDEVICE_OBJECT  DeviceObject; /* 栈顶设备对象指针 */
   ULONG  Flags;
   PVOID  DriverStart;
   ULONG  DriverSize;
   PVOID  DriverSection;
-  PDRIVER_EXTENSION  DriverExtension;
+  PDRIVER_EXTENSION  DriverExtension; /* 设备扩展，自定义，用于用户态访问数据 */
   UNICODE_STRING  DriverName;
   PUNICODE_STRING  HardwareDatabase;
-  PVOID  FastIoDispatch;
+  PVOID  FastIoDispatch; /* 文件系统IO */
   PDRIVER_INITIALIZE DriverInit;
-  PDRIVER_STARTIO    DriverStartIo;
+  PDRIVER_STARTIO    DriverStartIo; /* 串行事件地址 */
   PDRIVER_UNLOAD     DriverUnload;
   PDRIVER_DISPATCH   MajorFunction[IRP_MJ_MAXIMUM_FUNCTION + 1];
 } DRIVER_OBJECT;
