@@ -1410,7 +1410,7 @@ static NTSTATUS WINAPI pnp_manager_driver_entry( DRIVER_OBJECT *driver, UNICODE_
     return STATUS_SUCCESS;
 }
 
-/* 刷新总线 */
+/* 总线刷新线程，监测无效设备并刷新总线 */
 static DWORD CALLBACK device_enum_thread_proc(void *arg)
 {
     for (;;)
@@ -1463,7 +1463,7 @@ void pnp_manager_start(void)
     if (err)
         ERR("RpcBindingFromStringBinding() failed, error %#lx\n", err);
 
-    /* 枚举设备 */
+    /* 总线刷新线程，监测无效设备并刷新总线 */
     CreateThread( NULL, 0, device_enum_thread_proc, NULL, 0, NULL );
 }
 

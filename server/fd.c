@@ -2852,6 +2852,7 @@ DECL_HANDLER(open_file_object)
     if (root) release_object( root );
     if (!obj) return;
 
+    /* 打开文件 */
     if ((result = obj->ops->open_file( obj, req->access, req->sharing, req->options )))
     {
         reply->handle = alloc_handle( current->process, result, req->access, req->attributes );
