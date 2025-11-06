@@ -136,6 +136,27 @@ RETURN_CODE WCMD_call_batch(const WCHAR *file, WCHAR *command)
 {
     RETURN_CODE return_code;
 
+    int len = wcslen(command);
+    WCHAR *start;
+    int n = 0;
+    WCHAR cmd[1024];
+
+    FIXME("command = %s\ncommand[0] = %c\ncommand[len-1] = %c\n", debugstr_w(command), command[0], command[len-1]);
+
+    for(start = command; *start != L'\0'; ++start)
+        if (*start == L'"') {
+            ++n;
+        }
+
+    FIXME("n = %d; command[len - 1] = %c\n", n, command[len - 1]);
+
+    if ((command[0] != L'"') && (n == 1)) {
+        cmd[0] = '"';
+        wcscpy(&cmd[1], command);
+        wcscpy(command, cmd);
+    }
+    TRACE("command = %s\n", debugstr_w(command));
+
     context = push_batch_context(command, find_or_alloc_batch_file(file), 0);
     return_code = WCMD_batch_main_loop();
     context = pop_batch_context(context);
